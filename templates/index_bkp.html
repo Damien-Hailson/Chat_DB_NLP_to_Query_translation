@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dataset Query Interface</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2 class="text-center">Dataset Query Interface</h2>
+
+        <!-- Input Dataset Paths -->
+        <div class="mb-3">
+            <label for="dataset_paths" class="form-label">Dataset Paths (comma-separated):</label>
+            <input type="text" id="dataset_paths" class="form-control" placeholder="e.g., sales.csv, products.csv">
+            <button class="btn btn-primary mt-2" onclick="loadDatasets()">Load Datasets</button>
+        </div>
+        <div id="dataset_status" class="text-success"></div>
+
+        <!-- Display Dataset Samples -->
+        <div id="dataset_samples" class="mt-4"></div>
+
+        <!-- User Query Input -->
+        <div class="mb-3">
+            <label for="user_query" class="form-label">Enter Natural Language Query:</label>
+            <input type="text" id="user_query" class="form-control" placeholder="e.g., sample queries">
+            <button class="btn btn-success mt-2" onclick="processQuery()">Submit Query</button>
+        </div>
+        <div id="query_output" class="mt-4"></div>
+    </div>
+
+    <script>
+        async function loadDatasets() {
+            const datasetPaths = document.getElementById('dataset_paths').value.split(',').map(path => path.trim());
+            const response = await fetch('/load_datasets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dataset_paths: datasetPaths }),
+            });
+            const result = await response.json();
+
+            // Update the status message
+            document.getElementById('dataset_status').innerText = result.message || result.error;
+
+            // Display dataset samples
+            const datasetSamplesDiv = document.getElementById('dataset_samples');
+            datasetSamplesDiv.innerHTML = '';  // Clear previous samples
+            if (result.samples) {
+                datasetSamplesDiv.innerHTML = '<h5>Dataset Samples:</h5>';
+                for (const [tableName, sample] of Object.entries(result.samples)) {
+                    datasetSamplesDiv.innerHTML += `<h6>${tableName}</h6>`;
+                    datasetSamplesDiv.innerHTML += `
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>${Object.keys(sample[0]).map(col => `<th>${col}</th>`).join('')}</tr>
+                            </thead>
+                            <tbody>
+                                ${sample.map(row => ` 
+                                    <tr>${Object.values(row).map(val => `<td>${val}</td>`).join('')}</tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+            }
+        }
+
+        async function processQuery() {
+            const userQuery = document.getElementById('user_query').value;
+            const response = await fetch('/process_query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: userQuery }),
+            });
+            const result = await response.json();
+
+            const outputDiv = document.getElementById('query_output');
+
+            if (result.samples) {
+                // Display sample queries
+                outputDiv.innerHTML = `<h5>Sample Queries:</h5><ul>${result.samples.map(q => `<li>${q}</li>`).join('')}</ul>`;
+            } else if (result.translated_query) {
+                // Display translated query
+                outputDiv.innerHTML = `<h5>Translated Query:</h5><pre>${result.translated_query}</pre>`;
+
+                // Display query results
+                if (result.query_result && result.query_result.length > 0) {
+                    outputDiv.innerHTML += `
+                        <h5>Query Result:</h5>
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>${Object.keys(result.query_result[0]).map(col => `<th>${col}</th>`).join('')}</tr>
+                            </thead>
+                            <tbody>
+                                ${result.query_result.map(row => `
+                                    <tr>${Object.values(row).map(val => `<td>${val}</td>`).join('')}</tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else if (result.query_result) {
+                    outputDiv.innerHTML += `<h5>Query Result:</h5><p>No results found.</p>`;
+                }
+            } else if (result.error) {
+                // Display error
+                outputDiv.innerHTML = `<h5 class="text-danger">Error:</h5><pre>${result.error}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dataset Query Interface</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2 class="text-center">Dataset Query Interface</h2>
+
+        <!-- Select Database Type -->
+        <div class="mb-3">
+            <label class="form-label">Select Database Type:</label><br>
+            <input type="radio" id="sql" name="database_type" value="SQL" checked>
+            <label for="sql">SQL</label><br>
+            <input type="radio" id="nosql" name="database_type" value="NoSQL">
+            <label for="nosql">NoSQL</label>
+        </div>
+
+        <!-- Input Dataset Paths -->
+        <div class="mb-3">
+            <label for="dataset_paths" class="form-label">Dataset Paths (comma-separated):</label>
+            <input type="text" id="dataset_paths" class="form-control" placeholder="e.g., sales.csv, products.csv">
+            <button class="btn btn-primary mt-2" onclick="loadDatasets()">Load Datasets</button>
+        </div>
+        <div id="dataset_status" class="text-success"></div>
+
+        <!-- Display Dataset Samples -->
+        <div id="dataset_samples" class="mt-4"></div>
+
+        <!-- User Query Input -->
+        <div class="mb-3">
+            <label for="user_query" class="form-label">Enter Natural Language Query:</label>
+            <input type="text" id="user_query" class="form-control" placeholder="e.g., sample queries">
+            <button class="btn btn-success mt-2" onclick="processQuery()">Submit Query</button>
+        </div>
+        <div id="query_output" class="mt-4"></div>
+    </div>
+
+    <script>
+        function getSelectedDatabaseType() {
+            const dbType = document.querySelector('input[name="database_type"]:checked').value;
+            return dbType;
+        }
+
+        async function loadDatasets() {
+            const datasetPaths = document.getElementById('dataset_paths').value.split(',').map(path => path.trim());
+            const databaseType = getSelectedDatabaseType();
+
+            const response = await fetch('/load_datasets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dataset_paths: datasetPaths, database_type: databaseType }),
+            });
+            const result = await response.json();
+
+            document.getElementById('dataset_status').innerText = result.message || result.error;
+
+            const datasetSamplesDiv = document.getElementById('dataset_samples');
+            datasetSamplesDiv.innerHTML = '';
+            if (result.samples) {
+                datasetSamplesDiv.innerHTML = '<h5>Dataset Samples:</h5>';
+                for (const [tableName, sample] of Object.entries(result.samples)) {
+                    datasetSamplesDiv.innerHTML += `<h6>${tableName}</h6>`;
+                    
+                    if (databaseType === "SQL") {
+                        // Display table for SQL samples
+                        datasetSamplesDiv.innerHTML += `
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>${Object.keys(sample[0]).map(col => `<th>${col}</th>`).join('')}</tr>
+                                </thead>
+                                <tbody>
+                                    ${sample.map(row => `
+                                        <tr>${Object.values(row).map(val => `<td>${val}</td>`).join('')}</tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `;
+                    } else if (databaseType === "NoSQL") {
+                        // Display JSON for NoSQL samples
+                        datasetSamplesDiv.innerHTML += `<pre>${JSON.stringify(sample, null, 2)}</pre>`;
+                    }
+                }
+            }
+        }
+
+        async function processQuery() {
+            const userQuery = document.getElementById('user_query').value;
+            const databaseType = getSelectedDatabaseType();
+
+            const response = await fetch('/process_query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: userQuery, database_type: databaseType }),
+            });
+            const result = await response.json();
+
+            const outputDiv = document.getElementById('query_output');
+
+            if (result.samples) {
+                outputDiv.innerHTML = `<h5>Sample Queries:</h5><ul>${result.samples.map(q => `<li>${q}</li>`).join('')}</ul>`;
+            } else if (result.translated_query) {
+                outputDiv.innerHTML = `<h5>Translated Query:</h5><pre>${result.translated_query}</pre>`;
+
+                if (result.query_result) {
+                    if (databaseType === "SQL") {
+                        // Display table for SQL query results
+                        outputDiv.innerHTML += `
+                            <h5>Query Result:</h5>
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>${Object.keys(result.query_result[0]).map(col => `<th>${col}</th>`).join('')}</tr>
+                                </thead>
+                                <tbody>
+                                    ${result.query_result.map(row => `
+                                        <tr>${Object.values(row).map(val => `<td>${val}</td>`).join('')}</tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `;
+                    } else if (databaseType === "NoSQL") {
+                        // Display JSON for NoSQL query results
+                        outputDiv.innerHTML += `<h5>Query Result:</h5><pre>${JSON.stringify(result.query_result, null, 2)}</pre>`;
+                    }
+                }
+            } else if (result.error) {
+                outputDiv.innerHTML = `<h5 class="text-danger">Error:</h5><pre>${result.error}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>
